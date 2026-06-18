@@ -442,47 +442,68 @@ function RankingPage() {
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(true)
 
+  // Load function moved to component scope so it can be re-used by realtime listeners and the Refresh button
+  const load = async () => {
+    const { data: profiles } = await sb.from('profiles').select('id, name, email')
+    const { data: matches } = await sb.from('matches').select('*')
+    const { data: preds } = await sb.from('predictions').select('*, prediction_scorers(*)')
+    const { data: matchScorers } = await sb.from('match_scorers').select('*')
+
+    const finishedMatches = (matches || []).filter(m => m.home_score !== null && m.away_score !== null)
+    const scorersByMatch = {}
+    ;(matchScorers || []).forEach(ms => {
+      if (!scorersByMatch[ms.match_id]) scorersByMatch[ms.match_id] = []
+      scorersByMatch[ms.match_id].push(ms)
+    })
+
+    const userPts = {}
+    ;(profiles || []).forEach(p => { userPts[p.id] = { name: p.name || p.email || p.id, total: 0, correct: 0, exact: 0, scorers: 0 } })
+
+    // Ensure we account for any user_ids that have predictions but no profile row
+    ;(preds || []).forEach(pred => {
+      if (!userPts[pred.user_id]) {
+        userPts[pred.user_id] = { name: pred.user_id, total: 0, correct: 0, exact: 0, scorers: 0 }
+      }
+    })
+
+    ;(preds || []).forEach(pred => {
+      const match = finishedMatches.find(m => m.id === pred.match_id)
+      if (!match) return
+      const matchWithScorers = { ...match, scorers: scorersByMatch[match.id] || [] }
+      const predWithScorers = { ...pred, scorers: pred.prediction_scorers }
+      const pts = calcPoints(predWithScorers, matchWithScorers)
+      if (pts === null) return
+      // initialize user entry if missing (extra safety)
+      if (!userPts[pred.user_id]) userPts[pred.user_id] = { name: pred.user_id, total: 0, correct: 0, exact: 0, scorers: 0 }
+      userPts[pred.user_id].total += pts
+      const ph = pred.home_score, pa = pred.away_score
+      const mh = match.home_score, ma = match.away_score
+      const pr = ph > pa ? 'H' : ph < pa ? 'A' : 'D'
+      const mr = mh > ma ? 'H' : mh < ma ? 'A' : 'D'
+      if (pr === mr) userPts[pred.user_id].correct++
+      if (ph === mh && pa === ma) userPts[pred.user_id].exact++
+      const predS = (pred.prediction_scorers || []).map(s => (s.player_name || '').toString().toLowerCase())
+      const matchS = (scorersByMatch[match.id] || []).map(s => (s.player_name || '').toString().toLowerCase())
+      if (predS.some(s => matchS.includes(s))) userPts[pred.user_id].scorers++
+    })
+
+    const sorted = Object.entries(userPts).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.total - a.total)
+    setRows(sorted)
+    setLoading(false)
+  }
+
   useEffect(() => {
-    async function load() {
-      const { data: profiles } = await sb.from('profiles').select('id, name, email')
-      const { data: matches } = await sb.from('matches').select('*')
-      const { data: preds } = await sb.from('predictions').select('*, prediction_scorers(*)')
-      const { data: matchScorers } = await sb.from('match_scorers').select('*')
-
-      const finishedMatches = (matches || []).filter(m => m.home_score !== null)
-      const scorersByMatch = {}
-      ;(matchScorers || []).forEach(ms => {
-        if (!scorersByMatch[ms.match_id]) scorersByMatch[ms.match_id] = []
-        scorersByMatch[ms.match_id].push(ms)
-      })
-
-      const userPts = {}
-      ;(profiles || []).forEach(p => { userPts[p.id] = { name: p.name || p.email, total: 0, correct: 0, exact: 0, scorers: 0 } })
-
-      ;(preds || []).forEach(pred => {
-        const match = finishedMatches.find(m => m.id === pred.match_id)
-        if (!match) return
-        const matchWithScorers = { ...match, scorers: scorersByMatch[match.id] || [] }
-        const predWithScorers = { ...pred, scorers: pred.prediction_scorers }
-        const pts = calcPoints(predWithScorers, matchWithScorers)
-        if (pts === null || !userPts[pred.user_id]) return
-        userPts[pred.user_id].total += pts
-        const ph = pred.home_score, pa = pred.away_score
-        const mh = match.home_score, ma = match.away_score
-        const pr = ph > pa ? 'H' : ph < pa ? 'A' : 'D'
-        const mr = mh > ma ? 'H' : mh < ma ? 'A' : 'D'
-        if (pr === mr) userPts[pred.user_id].correct++
-        if (ph === mh && pa === ma) userPts[pred.user_id].exact++
-        const predS = (pred.prediction_scorers || []).map(s => s.player_name.toLowerCase())
-        const matchS = (scorersByMatch[match.id] || []).map(s => s.player_name.toLowerCase())
-        if (predS.some(s => matchS.includes(s))) userPts[pred.user_id].scorers++
-      })
-
-      const sorted = Object.entries(userPts).map(([id, d]) => ({ id, ...d })).sort((a, b) => b.total - a.total)
-      setRows(sorted)
-      setLoading(false)
-    }
     load()
+
+    // Realtime listeners: reload table when relevant changes occur
+    const channel = sb.channel('realtime-ranking')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => { load() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'predictions' }, () => { load() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'prediction_scorers' }, () => { load() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'match_scorers' }, () => { load() })
+      .subscribe()
+
+    return () => { channel.unsubscribe() }
   }, [])
 
   if (loading) return <div style={{ color:'var(--muted)', textAlign:'center', padding:40 }}>Calculando puntos...</div>
