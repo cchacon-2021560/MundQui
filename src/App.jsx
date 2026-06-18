@@ -25,9 +25,21 @@ function calcPoints(pred, match) {
   const predArr = pred.scorers || pred.prediction_scorers || []
   const matchArr = match.scorers || match.match_scorers || []
   if (predArr.length && matchArr.length) {
-    const predS = predArr.map(s => (s.player_name || s.name || s).toString().trim().toLowerCase())
-    const matchS = matchArr.map(s => (s.player_name || s.name || s).toString().trim().toLowerCase())
-    if (predS.some(s => matchS.includes(s))) pts += 1
+    const normalize = val => (val.player_name || val.name || val).toString().trim().toLowerCase()
+    const predS = predArr.map(normalize)
+    const matchS = matchArr.map(normalize)
+    const matchCounts = matchS.reduce((acc, name) => {
+      acc[name] = (acc[name] || 0) + 1
+      return acc
+    }, {})
+    let scorerPts = 0
+    predS.forEach(name => {
+      if (matchCounts[name] > 0) {
+        scorerPts += 1
+        matchCounts[name] -= 1
+      }
+    })
+    pts += scorerPts
   }
   return pts
 }
@@ -254,7 +266,7 @@ function MatchesPage({ userId }) {
   const [loading, setLoading] = useState(true)
 
   const load = useCallback(async () => {
-    const { data: ms } = await sb.from('matches').select('*').order('match_date', { ascending: true })
+    const { data: ms } = await sb.from('matches').select('*, match_scorers(*)').order('match_date', { ascending: true })
     const { data: ps } = await sb.from('predictions').select('*, prediction_scorers(*)').eq('user_id', userId)
     const predMap = {}
     ;(ps || []).forEach(p => { predMap[p.match_id] = p })
@@ -343,6 +355,8 @@ function MatchCard({ match, myPred, userId, onRefresh }) {
 }
 
 function PredView({ pred, match }) {
+  const officialScorers = match.match_scorers || []
+
   return (
     <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid var(--border)' }}>
       <div style={{ fontSize:12, color:'var(--muted)', marginBottom:8 }}>Tu predicción</div>
@@ -353,12 +367,24 @@ function PredView({ pred, match }) {
         <span style={{ fontSize:13, color:'var(--muted)', marginLeft:8 }}>{match.home_team} vs {match.away_team}</span>
       </div>
       {pred.prediction_scorers?.length > 0 && (
-        <div>
+        <div style={{ marginBottom:12 }}>
           <div style={{ fontSize:12, color:'var(--muted)', marginBottom:6 }}>Goleadores elegidos</div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
-            {pred.prediction_scorers.map((s,i) => (
+            {pred.prediction_scorers.map((s, i) => (
               <span key={i} style={{ background:'var(--bg3)', padding:'3px 10px', borderRadius:20, fontSize:12 }}>
                 ⚽ {s.player_name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {officialScorers.length > 0 && (
+        <div>
+          <div style={{ fontSize:12, color:'var(--muted)', marginBottom:6 }}>Goleadores oficiales</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {officialScorers.map((s, i) => (
+              <span key={i} style={{ background:'var(--bg4)', padding:'3px 10px', borderRadius:20, fontSize:12 }}>
+                🏆 {s.player_name}
               </span>
             ))}
           </div>
@@ -706,7 +732,7 @@ function AdminResults() {
     setBusy(true)
     setErr('')
     setOk('')
-    const matchId = Number(selected)
+    const matchId = selected
     await sb.from('matches').update({ home_score: parseInt(hs, 10), away_score: parseInt(as_, 10) }).eq('id', matchId)
     if (scorers.length) {
       await sb.from('match_scorers').insert(scorers.map(name => ({ match_id: matchId, player_name: name })))
