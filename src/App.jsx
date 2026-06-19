@@ -5,7 +5,21 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-const fmt = (d) => new Date(d).toLocaleString('es', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+const fmt = (d) => new Date(d).toLocaleString('es', {
+  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  timeZone: 'America/Guatemala'
+}) + ' (UTC-6)'
+
+function formatCountdown(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  if (totalSeconds <= 60) return 'menos de 1 min'
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h ${minutes}m`
+  return `${minutes}m`
+}
 
 function formatNameFromEmail(email) {
   if (!email) return ''
@@ -299,6 +313,11 @@ function MatchCard({ match, myPred, userId, onRefresh }) {
   const [open, setOpen] = useState(false)
   const isFinished = match.home_score !== null && match.away_score !== null
   const pts = myPred && isFinished ? calcPoints(myPred, { ...match, scorers: match.match_scorers }) : null
+  const matchStart = new Date(match.match_date).getTime()
+  const now = Date.now()
+  const startsInMs = matchStart - now
+  const predictionClosed = startsInMs <= 0
+  const canPredict = !myPred && !isFinished && !predictionClosed
 
   return (
     <div className="card" style={{ border: isFinished ? '1px solid rgba(46,160,67,0.3)' : '1px solid var(--border)' }}>
@@ -333,10 +352,12 @@ function MatchCard({ match, myPred, userId, onRefresh }) {
             </>
           ) : isFinished ? (
             <span className="tag" style={{ background:'rgba(218,54,51,0.15)', color:'var(--red)' }}>Sin predicción</span>
+          ) : predictionClosed ? (
+            <span className="tag" style={{ background:'rgba(218,54,51,0.15)', color:'var(--red)' }}>Predicción cerrada</span>
           ) : (
             <span className="tag tag-pending">Pendiente</span>
           )}
-          {!myPred && !isFinished && (
+          {!myPred && canPredict && (
             <button className="btn-primary" style={{ fontSize:13 }} onClick={() => setOpen(true)}>Predecir</button>
           )}
           {myPred && (
@@ -346,6 +367,12 @@ function MatchCard({ match, myPred, userId, onRefresh }) {
           )}
         </div>
       </div>
+      {!isFinished && (
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginTop:10 }}>
+          <span className="tag tag-info">{predictionClosed ? 'Predicción cerrada' : `Cierra en ${formatCountdown(startsInMs)}`}</span>
+          <span style={{ fontSize:11, color:'var(--muted)' }}>Horario Centroamérica UTC-6</span>
+        </div>
+      )}
 
       {open && (
         myPred ? <PredView pred={myPred} match={match} /> : <PredForm match={match} userId={userId} onDone={() => { setOpen(false); onRefresh(); }} />
@@ -402,6 +429,9 @@ function PredForm({ match, userId, onDone }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const matchStart = new Date(match.match_date).getTime()
+  const predictionClosed = Date.now() >= matchStart
+
   function addScorer() {
     const name = scorerName.trim()
     if (!name) return
@@ -412,6 +442,10 @@ function PredForm({ match, userId, onDone }) {
   }
 
   async function submit() {
+    if (predictionClosed) {
+      setErr('La predicción ya está cerrada y no puede enviarse.')
+      return
+    }
     if (hs === '' || as_ === '') { setErr('Ingresa el marcador'); return }
     setBusy(true)
     setErr('')
@@ -426,6 +460,15 @@ function PredForm({ match, userId, onDone }) {
       await sb.from('prediction_scorers').insert(scorers.map(name => ({ prediction_id: pred.id, player_name: name })))
     }
     onDone()
+  }
+
+  if (predictionClosed) {
+    return (
+      <div style={{ marginTop:16, padding:16, border:'1px solid rgba(218,54,51,0.15)', borderRadius:8, background:'rgba(255,239,239,0.7)' }}>
+        <div style={{ fontSize:13, fontWeight:500, marginBottom:8 }}>Predicción cerrada</div>
+        <div style={{ fontSize:12, color:'var(--red)' }}>Este partido ya inició o está en curso. No puedes enviar predicciones.</div>
+      </div>
+    )
   }
 
   return (
@@ -576,11 +619,13 @@ function AdminPage() {
   const [tab, setTab] = useState('matches')
   return (
     <div>
-      <div style={{ display:'flex', gap:8, marginBottom:20 }}>
+      <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
         <button className={`nav-tab${tab==='matches'?' active':''}`} onClick={()=>setTab('matches')}>Partidos</button>
+        <button className={`nav-tab${tab==='predictions'?' active':''}`} onClick={()=>setTab('predictions')}>Predicciones</button>
         <button className={`nav-tab${tab==='results'?' active':''}`} onClick={()=>setTab('results')}>Cargar resultados</button>
       </div>
       {tab==='matches' && <AdminMatches />}
+      {tab==='predictions' && <AdminPredictions />}
       {tab==='results' && <AdminResults />}
     </div>
   )
@@ -691,6 +736,111 @@ function AdminMatches() {
   )
 }
 
+function AdminPredictions() {
+  const [matches, setMatches] = useState([])
+  const [predictions, setPredictions] = useState([])
+  const [profiles, setProfiles] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [selectedMatch, setSelectedMatch] = useState('')
+
+  const load = async () => {
+    const { data: ms } = await sb.from('matches').select('*, match_scorers(*)').order('match_date')
+    const { data: ps } = await sb.from('predictions').select('*, prediction_scorers(*)').order('match_id')
+    const { data: profs } = await sb.from('profiles').select('id, name, email')
+    const profileMap = {}
+    ;(profs || []).forEach(p => { profileMap[p.id] = p })
+    setMatches(ms || [])
+    setPredictions(ps || [])
+    setProfiles(profileMap)
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const filteredMatches = selectedMatch ? matches.filter(m => String(m.id) === String(selectedMatch)) : matches
+
+  if (loading) return <div style={{ color:'var(--muted)', textAlign:'center', padding:40 }}>Cargando predicciones...</div>
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', marginBottom:20 }}>
+        <div style={{ minWidth:240, flex:1 }}>
+          <label style={{ fontSize:12, color:'var(--muted)', marginBottom:6, display:'block' }}>Filtrar por partido</label>
+          <select value={selectedMatch} onChange={e => setSelectedMatch(e.target.value)} style={{ width:'100%', maxWidth:360 }}>
+            <option value="">-- Todos los partidos --</option>
+            {matches.map(m => (
+              <option key={m.id} value={m.id}>{m.home_team} vs {m.away_team} · {fmt(m.match_date)}</option>
+            ))}
+          </select>
+        </div>
+        <button className="btn-ghost" onClick={load} style={{ whiteSpace:'nowrap' }}>Refrescar</button>
+      </div>
+
+      {filteredMatches.length === 0 ? (
+        <div className="card" style={{ textAlign:'center', padding:40, color:'var(--muted)' }}>No hay partidos para mostrar.</div>
+      ) : filteredMatches.map(match => {
+        const matchPreds = predictions.filter(p => String(p.match_id) === String(match.id))
+        const matchStart = new Date(match.match_date).getTime()
+        const matchClosed = Date.now() >= matchStart
+        const isFinished = match.home_score !== null && match.away_score !== null
+        return (
+          <div key={match.id} className="card" style={{ marginBottom:16 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+              <div>
+                <div style={{ fontWeight:600, fontSize:15 }}>{match.home_team} vs {match.away_team}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>{fmt(match.match_date)} · {match.stage || 'Fase de grupos'}</div>
+                <div style={{ fontSize:12, color:'var(--muted)', marginTop:4 }}>{matchPreds.length} predicción{matchPreds.length === 1 ? '' : 'es'}</div>
+                {isFinished && <div style={{ fontSize:12, color:'var(--green)', marginTop:6 }}>Resultado: {match.home_score} - {match.away_score}</div>}
+                {!isFinished && matchClosed && <div style={{ fontSize:12, color:'var(--red)', marginTop:6 }}>Predicciones cerradas — partido iniciado</div>}
+              </div>
+              <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+                <span className="tag tag-info">{matchClosed ? 'Predicciones cerradas' : 'Predicciones abiertas'}</span>
+                <span style={{ fontSize:11, color:'var(--muted)' }}>UTC-6</span>
+              </div>
+            </div>
+            <div style={{ marginTop:16 }}>
+              {matchPreds.length === 0 ? (
+                <div style={{ color:'var(--muted)', fontSize:13 }}>Aún no hay predicciones para este partido.</div>
+              ) : matchPreds.map(pred => {
+                const profile = profiles[pred.user_id]
+                const name = profile?.name || profile?.email || pred.user_id
+                const pts = isFinished ? calcPoints(pred, { ...match, scorers: match.match_scorers }) : null
+                return (
+                  <div key={pred.id} style={{ borderTop:'1px solid var(--border)', padding:'12px 0' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+                      <div style={{ fontSize:14, fontWeight:500 }}>{name}</div>
+                      <div style={{ fontSize:13, color:'var(--muted)' }}>{pred.home_score} - {pred.away_score}</div>
+                      {isFinished && <div className="pts-badge" style={{ fontSize:13 }}>{pts} pts</div>}
+                    </div>
+                    {pred.prediction_scorers?.length > 0 && (
+                      <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
+                        {pred.prediction_scorers.map((s, i) => (
+                          <span key={i} style={{ background:'var(--bg3)', padding:'3px 10px', borderRadius:20, fontSize:12 }}>
+                            ⚽ {s.player_name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {isFinished && match.match_scorers?.length > 0 && (
+                      <div style={{ marginTop:8, display:'flex', flexWrap:'wrap', gap:6 }}>
+                        {match.match_scorers.map((s, i) => (
+                          <span key={i} style={{ background:'var(--bg4)', padding:'3px 10px', borderRadius:20, fontSize:12 }}>
+                            🏆 {s.player_name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function AdminResults() {
   const [matches, setMatches] = useState([])
   const [selected, setSelected] = useState('')
@@ -703,8 +853,13 @@ function AdminResults() {
   const [ok, setOk] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const loadMatches = async () => {
+    const { data } = await sb.from('matches').select('*').order('match_date')
+    setMatches(data || [])
+  }
+
   useEffect(() => {
-    sb.from('matches').select('*').order('match_date').then(({ data }) => setMatches(data || []))
+    loadMatches()
   }, [])
 
   async function selectMatch(id) {
@@ -737,6 +892,7 @@ function AdminResults() {
     if (scorers.length) {
       await sb.from('match_scorers').insert(scorers.map(name => ({ match_id: matchId, player_name: name })))
     }
+    await loadMatches()
     setOk('¡Resultado guardado! Los puntos se recalcularán automáticamente.')
     const { data } = await sb.from('match_scorers').select('*').eq('match_id', matchId)
     setExisting(data || [])
@@ -751,7 +907,10 @@ function AdminResults() {
 
   return (
     <div className="card">
-      <div style={{ fontSize:14, fontWeight:500, marginBottom:14 }}>Cargar resultado de partido</div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, marginBottom:14, flexWrap:'wrap' }}>
+        <div style={{ fontSize:14, fontWeight:500 }}>Cargar resultado de partido</div>
+        <button className="btn-ghost" onClick={loadMatches} style={{ whiteSpace:'nowrap' }}>Refrescar partidos</button>
+      </div>
       <div style={{ marginBottom:14 }}>
         <div style={{ fontSize:12, color:'var(--muted)', marginBottom:4 }}>Selecciona el partido</div>
         <select value={selected} onChange={e=>selectMatch(e.target.value)}>
