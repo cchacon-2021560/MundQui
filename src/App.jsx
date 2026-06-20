@@ -5,10 +5,52 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-const fmt = (d) => new Date(d).toLocaleString('es', {
-  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
-  timeZone: 'America/Guatemala'
-}) + ' (UTC-6)'
+const fmt = (d) => {
+  const date = parseMatchDate(d)
+  if (!date || Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('es', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+    timeZone: 'America/Guatemala'
+  }).format(date) + ' (UTC-6)'
+}
+
+function parseMatchDate(value) {
+  if (!value) return null
+  const text = String(value)
+  const hasOffset = /[zZ]$|[+-]\d{2}:\d{2}$/.test(text)
+  const simpleLocal = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)
+  if (simpleLocal && !hasOffset) {
+    const [datePart, timePart] = text.split('T')
+    const [year, month, day] = datePart.split('-').map(Number)
+    const [hour, minute] = timePart.split(':').map(Number)
+    return new Date(Date.UTC(year, month - 1, day, hour + 6, minute))
+  }
+  return new Date(text)
+}
+
+function toGuatemalaDatetimeLocal(value) {
+  const date = parseMatchDate(value)
+  if (!date || Number.isNaN(date.getTime())) return ''
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Guatemala', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  }).formatToParts(date)
+  const mapped = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+  return `${mapped.year}-${mapped.month}-${mapped.day}T${mapped.hour}:${mapped.minute}`
+}
+
+function toUtcMatchDate(value) {
+  if (!value) return null
+  const text = String(value)
+  const simpleLocal = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(text)
+  if (simpleLocal) {
+    const [datePart, timePart] = text.split('T')
+    const [year, month, day] = datePart.split('-').map(Number)
+    const [hour, minute] = timePart.split(':').map(Number)
+    return new Date(Date.UTC(year, month - 1, day, hour + 6, minute)).toISOString()
+  }
+  return new Date(text).toISOString()
+}
 
 function formatCountdown(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -313,7 +355,7 @@ function MatchCard({ match, myPred, userId, onRefresh }) {
   const [open, setOpen] = useState(false)
   const isFinished = match.home_score !== null && match.away_score !== null
   const pts = myPred && isFinished ? calcPoints(myPred, { ...match, scorers: match.match_scorers }) : null
-  const matchStart = new Date(match.match_date).getTime()
+  const matchStart = parseMatchDate(match.match_date)?.getTime() ?? 0
   const now = Date.now()
   const startsInMs = matchStart - now
   const predictionClosed = startsInMs <= 0
@@ -429,7 +471,7 @@ function PredForm({ match, userId, onDone }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const matchStart = new Date(match.match_date).getTime()
+  const matchStart = parseMatchDate(match.match_date)?.getTime() ?? 0
   const predictionClosed = Date.now() >= matchStart
 
   function addScorer() {
@@ -648,10 +690,14 @@ function AdminMatches() {
   async function save() {
     if (!form.home_team || !form.away_team || !form.match_date) { setErr('Completa todos los campos'); return }
     setBusy(true); setErr('')
+    const payload = {
+      ...form,
+      match_date: toUtcMatchDate(form.match_date)
+    }
     if (editing) {
-      await sb.from('matches').update(form).eq('id', editing)
+      await sb.from('matches').update(payload).eq('id', editing)
     } else {
-      await sb.from('matches').insert(form)
+      await sb.from('matches').insert(payload)
     }
     setForm({ home_team:'', away_team:'', home_flag:'', away_flag:'', match_date:'', stage:'Fase de grupos' })
     setEditing(null)
@@ -669,7 +715,14 @@ function AdminMatches() {
 
   function startEdit(m) {
     setEditing(m.id)
-    setForm({ home_team: m.home_team, away_team: m.away_team, home_flag: m.home_flag||'', away_flag: m.away_flag||'', match_date: m.match_date?.slice(0,16) || '', stage: m.stage||'' })
+    setForm({
+      home_team: m.home_team,
+      away_team: m.away_team,
+      home_flag: m.home_flag || '',
+      away_flag: m.away_flag || '',
+      match_date: toGuatemalaDatetimeLocal(m.match_date),
+      stage: m.stage || ''
+    })
   }
 
   return (
@@ -780,7 +833,7 @@ function AdminPredictions() {
         <div className="card" style={{ textAlign:'center', padding:40, color:'var(--muted)' }}>No hay partidos para mostrar.</div>
       ) : filteredMatches.map(match => {
         const matchPreds = predictions.filter(p => String(p.match_id) === String(match.id))
-        const matchStart = new Date(match.match_date).getTime()
+        const matchStart = parseMatchDate(match.match_date)?.getTime() ?? 0
         const matchClosed = Date.now() >= matchStart
         const isFinished = match.home_score !== null && match.away_score !== null
         return (

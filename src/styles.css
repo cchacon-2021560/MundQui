@@ -1,37 +1,306 @@
-/* Extraído y simplificado desde quiniela-mundial.html */
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--border:rgba(255,255,255,0.1);--text:#e6edf3;--muted:#8b949e;--accent:#f7b731;--accent2:#ee5a24;--green:#2ea043;--red:#da3633;--blue:#388bfd;--radius:10px;--font:'Segoe UI',system-ui,sans-serif}
-body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;padding:18px}
-input,select,textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 12px;width:100%;font-size:14px}
-button{cursor:pointer;border:none;border-radius:6px;font-size:14px;padding:8px 16px;transition:all .18s ease}
-.btn-primary{background:var(--accent);color:#000}
-.btn-green{background:var(--green);color:#000}
-.btn-danger{background:rgba(218,54,51,0.12);color:var(--red);border:1px solid rgba(218,54,51,0.25)}
-.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
-button:hover:not(:disabled){filter:brightness(1.05)}
-button:disabled{opacity:.6;cursor:not-allowed}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
-.section-title{font-size:14px;font-weight:500;margin-bottom:14px}
-.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.field-label{font-size:12px;color:var(--muted);margin-bottom:4px;display:block}
-.row-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-.table-container{overflow-x:auto}
-.table-container table{min-width:640px}
-.table-container th, .table-container td{padding:10px 16px}
-.table-container th{font-weight:500;color:var(--muted);text-align:left}
-.table-container td{text-align:center}
-.table-container tr{border-bottom:1px solid var(--border)}
-.btn-section{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
-.btn-ghost.small{padding:6px 12px;font-size:13px}
-.btn-primary.small{padding:6px 12px;font-size:13px}
-.tag{display:inline-block;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:500}
-.tag-done{background:rgba(46,160,67,0.15);color:var(--green)}
-.tag-pending{background:rgba(247,183,49,0.15);color:var(--accent)}
-.score-bubble{background:var(--bg3);border:1px solid var(--border);border-radius:6px;width:52px;text-align:center;padding:6px;font-size:18px;font-weight:600;color:var(--accent)}
-.pts-badge{background:var(--accent);color:#000;font-weight:700;font-size:13px;padding:4px 10px;border-radius:20px}
-.divider{border:none;border-top:1px solid var(--border);margin:16px 0}
-.error-msg{background:rgba(218,54,51,0.1);border:1px solid rgba(218,54,51,0.3);color:#ff7b7b;padding:10px;border-radius:6px}
-.success-msg{background:rgba(46,160,67,0.1);border:1px solid rgba(46,160,67,0.3);color:#56d364;padding:10px;border-radius:6px}
-.nav-tab{padding:8px 16px;border-radius:6px;cursor:pointer;font-size:14px;border:none;background:transparent;color:var(--muted)}
-.nav-tab.active{background:var(--bg3);color:var(--text)}
-.flag{font-size:28px}
+/* Tema profesional para Quiniela Mundial */
+:root {
+  color-scheme: dark;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  background: #090b10;
+  color: #e7edf6;
+  --surface: #11161f;
+  --surface-variant: #15203a;
+  --surface-muted: #121828;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #e7edf6;
+  --muted: #8d9bb1;
+  --muted-strong: #d1d9e8;
+  --accent: #f4b739;
+  --accent-strong: #ffd166;
+  --positive: #3fd38f;
+  --negative: #ff5f70;
+  --info: #5da8ff;
+  --radius: 24px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  min-height: 100%;
+}
+
+body {
+  background: radial-gradient(circle at top, rgba(92, 111, 255, 0.16), transparent 34%),
+              radial-gradient(circle at 20% 10%, rgba(244, 183, 57, 0.14), transparent 20%),
+              linear-gradient(180deg, #090b10 0%, #0c1120 100%);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.04), transparent 25%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+}
+
+input, select, textarea, button {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary,
+.btn-green,
+.btn-blue,
+.btn-danger,
+.btn-ghost {
+  border: none;
+  border-radius: 999px;
+  padding: 0.86rem 1.4rem;
+  min-height: 44px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, rgba(244, 183, 57, 1), rgba(255, 215, 102, 0.92));
+  color: #08101a;
+  box-shadow: 0 20px 30px rgba(244, 183, 57, 0.18);
+}
+
+.btn-green {
+  background: linear-gradient(135deg, #29d189, #0eab86);
+  color: #08101a;
+}
+
+.btn-blue {
+  background: linear-gradient(135deg, #4c8dff, #3a6aff);
+  color: #f8fbff;
+}
+
+.btn-danger {
+  background: rgba(255, 95, 112, 0.14);
+  color: #ffbbc4;
+  border: 1px solid rgba(255, 95, 112, 0.2);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.card {
+  background: rgba(12, 19, 32, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 28px;
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.25);
+  padding: 1.75rem;
+  backdrop-filter: blur(12px);
+}
+
+.nav-tab {
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0.9rem 1.2rem;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+.nav-tab.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.tag-pending {
+  background: rgba(244, 183, 57, 0.16);
+  color: var(--accent);
+}
+
+.tag-done {
+  background: rgba(63, 211, 143, 0.16);
+  color: var(--positive);
+}
+
+.tag-admin {
+  background: rgba(255, 113, 113, 0.16);
+  color: #ffb3b3;
+}
+
+.tag-info {
+  background: rgba(91, 152, 255, 0.18);
+  color: var(--info);
+}
+
+.error-msg,
+.success-msg {
+  border-radius: 18px;
+  padding: 1rem 1.1rem;
+  font-size: 0.92rem;
+}
+
+.error-msg {
+  background: rgba(255, 95, 112, 0.12);
+  border: 1px solid rgba(255, 95, 112, 0.22);
+  color: #ffb3b3;
+}
+
+.success-msg {
+  background: rgba(63, 211, 143, 0.12);
+  border: 1px solid rgba(63, 211, 143, 0.22);
+  color: #d5ffde;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  color: var(--text);
+  padding: 1rem 1rem;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: rgba(244, 183, 57, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.score-bubble {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.2rem;
+  height: 3.2rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.pts-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(244, 183, 57, 0.18);
+  color: #08101a;
+  padding: 0.5rem 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 1.25rem 0;
+}
+
+.table-container {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 640px;
+}
+
+thead th,
+tbody td {
+  padding: 1rem 1.1rem;
+}
+
+thead th {
+  color: var(--muted);
+  text-align: left;
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+}
+
+tbody tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+tbody td {
+  font-size: 0.95rem;
+  color: var(--muted-strong);
+}
+
+.flag {
+  font-size: 2rem;
+}
+
+@media (max-width: 860px) {
+  .card {
+    padding: 1.2rem;
+  }
+
+  .nav-tab {
+    padding: 0.85rem 1rem;
+    font-size: 0.94rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .card {
+    border-radius: 20px;
+  }
+
+  .table-container {
+    overflow-x: scroll;
+  }
+}
